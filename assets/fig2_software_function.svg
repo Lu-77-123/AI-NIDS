@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 590" width="820" height="590" shape-rendering="geometricPrecision">
+<defs>
+<marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto">
+<polygon points="0,0 10,5 0,10" fill="#111111" stroke="none"/>
+</marker>
+<style>
+.box { fill: #ffffff; stroke: #111111; stroke-width: 1; }
+.ln  { fill: none; stroke: #111111; stroke-width: 1; stroke-linejoin: miter; stroke-linecap: square; }
+.hz  { font: 400 13px/1 "SimSun","宋体",serif; fill: #111111; }
+.hb  { font: 700 13px/1 "SimSun","宋体",serif; fill: #111111; }
+.vt  { font: 400 12px/1 "SimSun","宋体",serif; fill: #111111; letter-spacing: 2px; }
+.cap { font: 400 15px/28px "SimSun","宋体",serif; fill: #111111; letter-spacing: 1px; }
+</style>
+</defs>
+
+<rect x="0" y="0" width="820" height="590" fill="#ffffff"/>
+
+<!-- 第1层：SNMP / Pcap4j -->
+<rect x="240" y="20" width="140" height="30" class="box"/>
+<text x="310" y="40" text-anchor="middle" class="hz">SNMP协议封装解析</text>
+<rect x="440" y="20" width="140" height="30" class="box"/>
+<text x="510" y="40" text-anchor="middle" class="hz">Pcap4j数据包封装</text>
+
+<!-- 第2层：数据采集层 -->
+<rect x="350" y="92" width="120" height="30" class="box"/>
+<text x="410" y="112" text-anchor="middle" class="hb">数据采集层</text>
+
+<path d="M310 50 L310 70 L386 70 L386 92" class="ln" marker-end="url(#a)"/>
+<path d="M510 50 L510 70 L434 70 L434 92" class="ln" marker-end="url(#a)"/>
+
+<!-- 第3层：Spring Boot / Python AI -->
+<rect x="240" y="164" width="120" height="30" class="box"/>
+<text x="300" y="184" text-anchor="middle" class="hz">Spring Boot后端</text>
+<rect x="460" y="164" width="120" height="30" class="box"/>
+<text x="520" y="184" text-anchor="middle" class="hz">Python AI微服务</text>
+
+<path d="M386 122 L386 140 L300 140 L300 164" class="ln" marker-end="url(#a)"/>
+<path d="M434 122 L434 140 L520 140 L520 164" class="ln" marker-end="url(#a)"/>
+
+<!-- Spring Boot ↔ Python AI 双向平行箭头 -->
+<path d="M360 176 L460 176" class="ln" marker-end="url(#a)"/>
+<path d="M460 190 L360 190" class="ln" marker-end="url(#a)"/>
+<text x="410" y="169" text-anchor="middle" class="hz" style="font-size:11px">HTTP调用</text>
+
+<!-- 第4层左：数据存储模块 -->
+<rect x="240" y="252" width="120" height="30" class="box"/>
+<text x="300" y="272" text-anchor="middle" class="hz">数据存储模块</text>
+<path d="M300 194 L300 252" class="ln" marker-end="url(#a)"/>
+
+<!-- 第4层右：孤立森林 / 动态基线 -->
+<rect x="460" y="232" width="120" height="30" class="box"/>
+<text x="520" y="252" text-anchor="middle" class="hz">孤立森林模块</text>
+<rect x="460" y="284" width="120" height="30" class="box"/>
+<text x="520" y="304" text-anchor="middle" class="hz">动态基线模块</text>
+
+<path d="M490 194 L490 232" class="ln" marker-end="url(#a)"/>
+<path d="M550 194 L550 284" class="ln" marker-end="url(#a)"/>
+
+<!-- 第5层左：数据存储 → 4CRUD -->
+<rect x="190" y="368" width="36" height="80" class="box"/>
+<text x="208" y="386" text-anchor="middle" class="vt">增</text>
+<text x="208" y="406" text-anchor="middle" class="vt">加</text>
+<text x="208" y="426" text-anchor="middle" class="vt">数</text>
+<text x="208" y="446" text-anchor="middle" class="vt">据</text>
+
+<rect x="246" y="368" width="36" height="80" class="box"/>
+<text x="264" y="386" text-anchor="middle" class="vt">删</text>
+<text x="264" y="406" text-anchor="middle" class="vt">除</text>
+<text x="264" y="426" text-anchor="middle" class="vt">数</text>
+<text x="264" y="446" text-anchor="middle" class="vt">据</text>
+
+<rect x="302" y="368" width="36" height="80" class="box"/>
+<text x="320" y="386" text-anchor="middle" class="vt">修</text>
+<text x="320" y="406" text-anchor="middle" class="vt">改</text>
+<text x="320" y="426" text-anchor="middle" class="vt">数</text>
+<text x="320" y="446" text-anchor="middle" class="vt">据</text>
+
+<rect x="358" y="368" width="36" height="80" class="box"/>
+<text x="376" y="386" text-anchor="middle" class="vt">查</text>
+<text x="376" y="406" text-anchor="middle" class="vt">询</text>
+<text x="376" y="426" text-anchor="middle" class="vt">数</text>
+<text x="376" y="446" text-anchor="middle" class="vt">据</text>
+
+<path d="M300 282 L300 336"        class="ln"/>
+<path d="M208 336 L376 336"       class="ln"/>
+<path d="M208 336 L208 368"       class="ln" marker-end="url(#a)"/>
+<path d="M264 336 L264 368"       class="ln" marker-end="url(#a)"/>
+<path d="M320 336 L320 368"       class="ln" marker-end="url(#a)"/>
+<path d="M376 336 L376 368"       class="ln" marker-end="url(#a)"/>
+
+<!-- 第5层右：前端展示层 -->
+<rect x="460" y="368" width="120" height="30" class="box"/>
+<text x="520" y="388" text-anchor="middle" class="hz">前端展示层</text>
+
+<path d="M300 194 L300 356 L490 356 L490 368" class="ln" marker-end="url(#a)"/>
+<path d="M520 314 L520 356 L520 368"         class="ln" marker-end="url(#a)"/>
+
+<!-- 第6层：前端5页面 -->
+<rect x="406" y="456" width="36" height="88" class="box"/>
+<text x="424" y="475" text-anchor="middle" class="vt">流</text>
+<text x="424" y="495" text-anchor="middle" class="vt">量</text>
+<text x="424" y="515" text-anchor="middle" class="vt">大</text>
+<text x="424" y="535" text-anchor="middle" class="vt">屏</text>
+
+<rect x="462" y="456" width="36" height="88" class="box"/>
+<text x="480" y="475" text-anchor="middle" class="vt">异</text>
+<text x="480" y="495" text-anchor="middle" class="vt">常</text>
+<text x="480" y="515" text-anchor="middle" class="vt">散</text>
+<text x="480" y="535" text-anchor="middle" class="vt">点</text>
+
+<rect x="518" y="456" width="36" height="88" class="box"/>
+<text x="536" y="475" text-anchor="middle" class="vt">拓</text>
+<text x="536" y="495" text-anchor="middle" class="vt">扑</text>
+<text x="536" y="515" text-anchor="middle" class="vt">图</text>
+<text x="536" y="535" text-anchor="middle" class="vt">页</text>
+
+<rect x="574" y="456" width="36" height="88" class="box"/>
+<text x="592" y="475" text-anchor="middle" class="vt">设</text>
+<text x="592" y="495" text-anchor="middle" class="vt">备</text>
+<text x="592" y="515" text-anchor="middle" class="vt">管</text>
+<text x="592" y="535" text-anchor="middle" class="vt">理</text>
+
+<rect x="630" y="456" width="36" height="88" class="box"/>
+<text x="648" y="475" text-anchor="middle" class="vt">告</text>
+<text x="648" y="495" text-anchor="middle" class="vt">警</text>
+<text x="648" y="515" text-anchor="middle" class="vt">中</text>
+<text x="648" y="535" text-anchor="middle" class="vt">心</text>
+
+<path d="M520 398 L520 422"        class="ln"/>
+<path d="M424 422 L648 422"       class="ln"/>
+<path d="M424 422 L424 456"       class="ln" marker-end="url(#a)"/>
+<path d="M480 422 L480 456"       class="ln" marker-end="url(#a)"/>
+<path d="M536 422 L536 456"       class="ln" marker-end="url(#a)"/>
+<path d="M592 422 L592 456"       class="ln" marker-end="url(#a)"/>
+<path d="M648 422 L648 456"       class="ln" marker-end="url(#a)"/>
+
+<!-- 图号 -->
+<text x="410" y="572" text-anchor="middle" class="cap">图 2　软件功能需求分析图</text>
+</svg>

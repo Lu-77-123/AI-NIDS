@@ -1,0 +1,82 @@
+server:
+  port: 8081
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
+      force-request: true
+      force-response: true
+
+spring:
+  datasource:
+    # ⚠️ 请改成你本机 MySQL 的连接信息：端口/库名/用户名/密码
+    url: jdbc:mysql://localhost:3306/smart_monitor?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=UTF-8&connectionCollation=utf8mb4_unicode_ci&allowPublicKeyRetrieval=true
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:your_password}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      connection-init-sql: "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci"
+      # ---- 连接池加固：防止机器休眠/时钟跳跃后拿到失效连接卡死 ----
+      pool-name: SmartMonitorHikari
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 5000        # 5s 拿不到连接即失败，不再默认卡 30s
+      validation-timeout: 3000
+      idle-timeout: 600000
+      max-lifetime: 1200000           # 20 分钟强制回收
+      keepalive-time: 300000          # 5 分钟保活
+  jpa:
+    hibernate:
+      ddl-auto: update      # 启动时自动建表/更新表结构
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+
+snmp:
+  timeout: 2000
+  retries: 2
+  # eNSP 真实设备网段（AR1 GE0/0/1 = 192.168.99.100，Cloud2 桥接独立环回网卡 以太网6 192.168.99.1）
+  discovery:
+    segment: 192.168.99.0/24
+    community: public
+  # ============================================================
+  # 攻击意图判定阈值（实验室档）
+  # eNSP 单机环回链路实测洪泛入站仅 0.3~1 Mbps，生产园区网请恢复默认
+  # 500 / 200 / 100 Mbps（删除本段即自动使用代码内生产默认值）。
+  # ============================================================
+  detection:
+    ddos-mbps: 0.3        # 入站突发阈值：实测洪泛约 0.44~0.48 Mbps
+    ddos-ratio: 10        # 入/出比：大包不回应时比值 >1000，稳命中
+    exfil-mbps: 0.3       # 数据外泄出站阈值
+    exfil-ratio: 0.2      # in/out < 0.2 判为出站单向突发
+    worm-mbps: 0.3        # 蠕虫传播双向阈值
+
+# 内置统计检测引擎参数（Python AI 微服务已彻底移除）
+ai:
+  fallback:
+    min-anomaly-bps: 50000   # 绝对流量下限：低于此值即使突增也不判异常
+
+# ============================================================
+# DeepSeek V4.1-Flash 大模型（小七问答 + 告警 AI 研判唯一引擎）
+# Key 只从环境变量 DEEPSEEK_API_KEY 注入，禁止把 sk- 写进本文件
+# ============================================================
+deepseek:
+  api-key: ${DEEPSEEK_API_KEY:}
+  base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+  model: ${DEEPSEEK_MODEL:deepseek-flash}
+  timeout-seconds: 30
+
+# ============================================================
+# 旁路抓包（Pcap4j 包级入侵检测）
+# 抓包失败不影响主系统；找不到网卡时只记录日志
+# ============================================================
+pcap:
+  enabled: true
+  interface-ip: 192.168.99.1   # eNSP 桥接网卡；真实环境改为被监控网段所在网卡 IP
+  syn-pps: 200                 # SYN Flood：SYN 速率阈值（pps）
+  syn-ratio: 0.7               # SYN Flood：SYN 占 TCP 比例阈值
+  udp-pps: 500                 # UDP Flood：UDP 速率阈值（pps）
+  scan-ports: 20               # 端口扫描：20 秒内不同目的端口数阈值
+  max-threats: 50              # 内存保留的检出记录条数
