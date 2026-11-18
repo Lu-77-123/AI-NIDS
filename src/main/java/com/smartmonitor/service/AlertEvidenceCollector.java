@@ -65,6 +65,7 @@ public class AlertEvidenceCollector {
         collectAlertHistory(alert, ev);
         collectDeviceProfile(alert.getDeviceId(), ev);
         collectNetworkWide(ev);
+        collectTopology(alert, ev);
 
         logger.info("研判取证完成: alertId={}, 样本={}, 中位数={}bps, 当前={}bps, 历史告警={}次",
                 alert.getId(), ev.sampleCount, ev.medianInBps, ev.currentInBps, ev.alertCountSameDevice);
@@ -170,8 +171,76 @@ public class AlertEvidenceCollector {
         }
     }
 
-    private static long medianOf(List<Long> values) {
-        if (values == null || values.isEmpty()) return 0L;
+    /**
+     * 拓扑关系取证：系统没有采集 LLDP/ARP 邻居，无法给出物理链路，
+     * 因此这里基于设备类型、备注与 IP 网段推导"网络位置"和"影响面"，
+     * 供模型判断该告警的影响范围（核心出口 vs 单台终端）。
+     */
+    private void collectTopology(AlertInfo alert, Evidence ev) {
+        try {
+            List<Device> all = deviceRepository.findAll();
+            ev.managedDeviceCount = all.size();
+
+            Device self = null;
+            for (Device d : all) {
+                if (d.getId() != null && d.getId().equals(alert.getDeviceId())) {
+                    self = d;
+                    break;
+                }
+            }
+
+            ev.topologyRole = roleOf(self);
+            ev.networkScope = scopeOf(ev.topologyRole);
+
+            String ip = alert.getDeviceIp() != null ? alert.getDeviceIp() : (self != null ? self.getIp() : null);
+            if (ip != null && ip.contains(".")) {
+                String prefix = ip.substring(0, ip.lastIndexOf('.'));
+                ev.subnetPrefix = prefix + ".0/24";
+                for (Device d : all) {
+                    if (self != null && d.getId() != null && d.getId().equals(self.getId())) continue;
+                    if (d.getIp() != null && d.getIp().startsWith(prefix + ".")) {
+                        ev.sameSubnetNeighbors.add(labelOf(d));
+                    }
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("取证失败(拓扑关系): {}", e.getMessage());
+        }
+    }
+
+    private static String roleOf(Device d) {
+        if (d == null) return "未知设备";
+        String type = d.getType() != null ? d.getType() : "";
+        String remark = d.getRemark() != null ? d.getRemark() : "";
+        if (remark.contains("核心") || remark.contains("出口") || remark.contains("网关")) {
+            return "核心出口设备";
+        }
+        if (type.contains("路由") || type.toLowerCase().contains("router")) {
+            return "路由设备（可能承担网关）";
+        }
+        if (type.contains("交换") || type.toLowerCase().contains("switch")) {
+            return "交换设备";
+        }
+        if (type.contains("服务") || type.toLowerCase().contains("server")) {
+            return "业务服务器";
+        }
+        return "终端设备";
+    }
+
+    private static String scopeOf(String role) {
+        if ("核心出口设备".equals(role)) return "高：异常可能影响其下游全部业务流量，需优先处置";
+        if (role != null && role.startsWith("路由")) return "中高：影响所连接网段的跨网段通信";
+        if ("交换设备".equals(role)) return "中：影响本交换机下挂终端";
+        if ("业务服务器".equals(role)) return "中：影响该服务器承载的业务";
+        return "低：影响单台终端";
+    }
+
+    private static String labelOf(Device d) {
+        String name = d.getName() != null && !d.getName().trim().isEmpty() ? d.getName() : d.getIp();
+        return name + "(" + d.getIp() + ")";
+    }
+
+    private static long medianOf(List<Long> values) {        if (values == null || values.isEmpty()) return 0L;
         List<Long> sorted = new ArrayList<>(values);
         Collections.sort(sorted);
         int n = sorted.size();
@@ -198,6 +267,11 @@ public class AlertEvidenceCollector {
         public String deviceRemark;
         public int anomalyDeviceCount;
         public int totalDeviceCount;
+        public String topologyRole;
+        public String networkScope;
+        public String subnetPrefix;
+        public int managedDeviceCount;
+        public List<String> sameSubnetNeighbors = new ArrayList<>();
 
         /** 拼成提示词中的"客观证据"段落，每条都带序号，便于模型引用 */
         public String toPromptText() {
@@ -252,6 +326,20 @@ public class AlertEvidenceCollector {
             if (totalDeviceCount > 0) {
                 sb.append(idx++).append(". 同期全网 ").append(totalDeviceCount)
                         .append(" 台在线设备中，处于异常状态的有 ").append(anomalyDeviceCount).append(" 台\n");
+            }
+
+            if (topologyRole != null) {
+                sb.append(idx++).append(". 网络位置：").append(topologyRole)
+                        .append("；影响面评估：").append(networkScope).append('\n');
+            }
+            if (subnetPrefix != null) {
+                sb.append(idx++).append(". 同网段（").append(subnetPrefix).append("）内另有 ")
+                        .append(sameSubnetNeighbors.size()).append(" 台纳管设备");
+                if (!sameSubnetNeighbors.isEmpty()) {
+                    int limit = Math.min(5, sameSubnetNeighbors.size());
+                    sb.append("：").append(String.join("、", sameSubnetNeighbors.subList(0, limit)));
+                }
+                sb.append('\n');
             }
             return sb.toString();
         }
