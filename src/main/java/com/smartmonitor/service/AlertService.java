@@ -22,13 +22,18 @@ public class AlertService {
     private final AlertInfoRepository alertInfoRepository;
     private final AttackIntentClassifier classifier;
     private final DeepSeekService deepSeekService;
+    private final AlertEvidenceCollector evidenceCollector;
+    private final AnalysisValidator analysisValidator;
 
     public AlertService(AlertInfoRepository alertInfoRepository, AttackIntentClassifier classifier,
-                        DeepSeekService deepSeekService, AiConfigService aiConfigService) {
+                        DeepSeekService deepSeekService, AiConfigService aiConfigService,
+                        AlertEvidenceCollector evidenceCollector, AnalysisValidator analysisValidator) {
         this.alertInfoRepository = alertInfoRepository;
         this.classifier = classifier;
         this.deepSeekService = deepSeekService;
         this.aiConfigService = aiConfigService;
+        this.evidenceCollector = evidenceCollector;
+        this.analysisValidator = analysisValidator;
     }
 
     /**
@@ -210,13 +215,20 @@ public class AlertService {
             return result;
         }
 
-        String systemPrompt = "你是一名资深网络安全分析师，正在协助运维人员研判网络入侵检测系统产生的告警。"
-                + "请基于给出的告警数据做专业、简洁、可执行的分析。"
-                + "输出必须包含三个部分，每部分一行小标题加内容，总长度不超过 300 字：\n"
-                + "【威胁判断】该告警是否构成真实威胁及置信度；\n"
-                + "【可能成因】触发该告警的常见原因；\n"
-                + "【处置建议】运维人员可立即执行的 2-3 条具体操作。\n"
-                + "只输出分析内容，不要客套话，不要使用 Markdown 符号。";
+        String systemPrompt = "你是一名资深网络安全分析师，正在研判网络入侵检测系统产生的告警。"
+                + "你必须只依据用户提供的【系统取证结果】作答，不得臆测未提供的信息。\n"
+                + "只输出一个 JSON 对象，不要输出任何解释性文字，字段如下：\n"
+                + "{\"threat_level\":\"real 或 suspicious 或 false_positive\","
+                + "\"confidence\":0到1之间的小数,"
+                + "\"reasoning\":\"一句话判断依据\","
+                + "\"evidence\":[\"引用取证结果中的事实，最多5条\"],"
+                + "\"causes\":[\"可能成因，1-2条\"],"
+                + "\"actions\":[\"可立即执行的处置建议，2-3条\"]}\n"
+                + "判定标准：流量突增且持续、当前值创窗口新高、设备为核心出口，倾向 real；"
+                + "单点抖动、幅度小、无历史告警，倾向 false_positive；介于两者之间用 suspicious。";
+
+        // 取证：把可核实的客观事实交给模型，避免它仅凭四个字段臆断
+        AlertEvidenceCollector.Evidence evidence = evidenceCollector.collect(alert);
 
         StringBuilder user = new StringBuilder();
         user.append("告警数据如下：\n");
@@ -231,6 +243,9 @@ public class AlertService {
         user.append("入站流量：").append(formatBps(alert.getInBps() != null ? alert.getInBps() : 0L)).append('\n');
         user.append("出站流量：").append(formatBps(alert.getOutBps() != null ? alert.getOutBps() : 0L)).append('\n');
         user.append("系统描述：").append(alert.getDescription() != null ? alert.getDescription() : "-");
+        user.append("\n\n").append(evidence.toPromptText());
+        user.append("\n\n输出要求：只输出一个 JSON 对象；threat_level 与 confidence 必须自洽（判 real 时置信度不低于 0.5）；")
+            .append("evidence 至少引用 1 条取证事实并带上序号。");
 
         List<Map<String, String>> messages = new ArrayList<>();
         Map<String, String> sys = new HashMap<>();
@@ -243,11 +258,37 @@ public class AlertService {
         messages.add(usr);
 
         try {
-            String analysis = deepSeekService.chat(messages);
-            if (analysis == null || analysis.trim().isEmpty()) {
-                throw new DeepSeekService.DeepSeekException("模型返回内容为空");
+            // 第一次调用：强制 JSON 输出，便于字段级校验
+            String raw = deepSeekService.chatJson(messages);
+            AnalysisValidator.Result vr = analysisValidator.validate(raw, alert, evidence);
+
+            // 校验不通过：带着具体问题让模型重写一次（仅一次，避免无限消耗）
+            if (!vr.valid) {
+                logger.warn("研判输出校验未通过，触发重试: alertId={}, errors={}", id, vr.errors);
+                List<Map<String, String>> retry = new ArrayList<>(messages);
+                Map<String, String> prev = new HashMap<>();
+                prev.put("role", "assistant");
+                prev.put("content", raw);
+                retry.add(prev);
+                Map<String, String> fix = new HashMap<>();
+                fix.put("role", "user");
+                fix.put("content", "你的上次输出存在以下问题：" + String.join("；", vr.errors)
+                        + "。请修正后严格按 JSON 格式重新输出，只输出 JSON 对象。");
+                retry.add(fix);
+                String raw2 = deepSeekService.chatJson(retry);
+                vr = analysisValidator.validate(raw2, alert, evidence);
             }
-            analysis = analysis.trim();
+
+            boolean validated = vr.valid;
+            String analysis;
+            if (validated) {
+                analysis = vr.rendered;
+            } else {
+                // 两次都不合格：降级为纯证据摘要，明确标注未通过校验，不展示可能误导的模型结论
+                analysis = analysisValidator.renderFallback(alert, evidence, vr.errors);
+                logger.warn("研判输出两次校验均未通过，降级为证据摘要: alertId={}, errors={}", id, vr.errors);
+            }
+
             alert.setAiAnalysis(analysis);
             alert.setAiAnalysisTime(LocalDateTime.now());
             alertInfoRepository.save(alert);
@@ -256,9 +297,13 @@ public class AlertService {
             result.put("ai", true);
             result.put("ok", true);
             result.put("cached", false);
+            result.put("validated", validated);
+            if (vr.level != null) result.put("threatLevel", vr.level);
+            if (vr.confidence > 0) result.put("modelConfidence", vr.confidence);
+            if (!vr.errors.isEmpty()) result.put("validationErrors", vr.errors);
             result.put("model", deepSeekService.getModel());
             result.put("analysisTime", alert.getAiAnalysisTime().format(DT_FMT));
-            logger.info("告警 AI 研判成功: alertId={}, model={}", id, deepSeekService.getModel());
+            logger.info("告警 AI 研判成功: alertId={}, model={}, validated={}", id, deepSeekService.getModel(), validated);
         } catch (Exception e) {
             String errMsg = "AI 研判失败（" + e.getMessage() + "）。本次未使用任何本地规则结论，请稍后重试或检查 DeepSeek 服务/网络。";
             result.put("analysis", errMsg);

@@ -83,6 +83,22 @@ public class DeepSeekService {
      * @throws DeepSeekException 网络错误、限流或业务错误时抛出，调用方需自行兜底
      */
     public String chat(List<Map<String, String>> messageList) {
+        return chatInternal(messageList, false);
+    }
+
+    /**
+     * JSON 模式对话补全：通过 OpenAI 兼容的 response_format 约束模型只输出单个 JSON 对象。
+     * 用于告警研判的结构化输出，便于调用方做字段解析与一致性校验。
+     *
+     * @param messageList OpenAI 格式消息列表
+     * @return 模型返回的 JSON 字符串（可能带 ```json 围栏，由调用方负责剥离）
+     * @throws DeepSeekException 网络错误、限流或业务错误时抛出
+     */
+    public String chatJson(List<Map<String, String>> messageList) {
+        return chatInternal(messageList, true);
+    }
+
+    private String chatInternal(List<Map<String, String>> messageList, boolean jsonMode) {
         if (!isEnabled()) {
             throw new DeepSeekException("未配置 DEEPSEEK_API_KEY，DeepSeek 服务未启用");
         }
@@ -90,7 +106,11 @@ public class DeepSeekService {
             ObjectNode body = mapper.createObjectNode();
             body.put("model", getModel());
             body.put("stream", false);
-            body.put("temperature", 0.7);
+            // JSON 模式降低随机性，保证结构化字段稳定；普通对话保持默认 0.7
+            body.put("temperature", jsonMode ? 0.2 : 0.7);
+            if (jsonMode) {
+                body.putObject("response_format").put("type", "json_object");
+            }
             body.put("max_tokens", 800);
             // V4 思考模式开关：disabled = 直接回答，降低延迟与费用
             body.putObject("thinking").put("type", "disabled");
