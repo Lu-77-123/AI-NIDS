@@ -43,13 +43,16 @@ public class AlertEvidenceCollector {
     private final TrafficDataRepository trafficDataRepository;
     private final AlertInfoRepository alertInfoRepository;
     private final DeviceRepository deviceRepository;
+    private final AutoEncoderService autoEncoderService;
 
     public AlertEvidenceCollector(TrafficDataRepository trafficDataRepository,
                                   AlertInfoRepository alertInfoRepository,
-                                  DeviceRepository deviceRepository) {
+                                  DeviceRepository deviceRepository,
+                                  AutoEncoderService autoEncoderService) {
         this.trafficDataRepository = trafficDataRepository;
         this.alertInfoRepository = alertInfoRepository;
         this.deviceRepository = deviceRepository;
+        this.autoEncoderService = autoEncoderService;
     }
 
     /**
@@ -66,6 +69,7 @@ public class AlertEvidenceCollector {
         collectDeviceProfile(alert.getDeviceId(), ev);
         collectNetworkWide(ev);
         collectTopology(alert, ev);
+        collectAutoEncoder(alert, ev);
 
         logger.info("研判取证完成: alertId={}, 样本={}, 中位数={}bps, 当前={}bps, 历史告警={}次",
                 alert.getId(), ev.sampleCount, ev.medianInBps, ev.currentInBps, ev.alertCountSameDevice);
@@ -208,6 +212,22 @@ public class AlertEvidenceCollector {
         }
     }
 
+    /**
+     * 自编码器取证：把模型当前对这条告警的重构误差与判定阈值一并交给研判模型，
+     * 让大模型知道"深度模型是否也认为这里不对劲"，而不是只看统计评分。
+     */
+    private void collectAutoEncoder(AlertInfo alert, Evidence ev) {
+        try {
+            ev.aeReady = autoEncoderService.isReady();
+            if (!ev.aeReady) return;
+            ev.aeThreshold = autoEncoderService.getThreshold();
+            ev.aeError = autoEncoderService.errorOf(alert.getDeviceId());
+            ev.aeAnomalous = autoEncoderService.isAnomalous(ev.aeError);
+        } catch (Exception e) {
+            logger.warn("取证失败(自编码器): {}", e.getMessage());
+        }
+    }
+
     private static String roleOf(Device d) {
         if (d == null) return "未知设备";
         String type = d.getType() != null ? d.getType() : "";
@@ -272,6 +292,10 @@ public class AlertEvidenceCollector {
         public String subnetPrefix;
         public int managedDeviceCount;
         public List<String> sameSubnetNeighbors = new ArrayList<>();
+        public boolean aeReady;
+        public double aeError = -1;
+        public double aeThreshold;
+        public boolean aeAnomalous;
 
         /** 拼成提示词中的"客观证据"段落，每条都带序号，便于模型引用 */
         public String toPromptText() {
@@ -299,6 +323,13 @@ public class AlertEvidenceCollector {
                 }
             } else {
                 sb.append(idx++).append(". 该设备暂无历史流量样本，无法判断基线偏移\n");
+            }
+
+            if (aeReady && aeError >= 0) {
+                sb.append(idx++).append(". 自编码器对最近 ").append(AutoEncoderService.WINDOW).append(" 轮流量窗口的重构误差 ")
+                        .append(String.format("%.6f", aeError)).append("，判定阈值 ")
+                        .append(String.format("%.6f", aeThreshold)).append("，模型结论：")
+                        .append(aeAnomalous ? "异常（重构误差超过阈值）" : "正常").append('\n');
             }
 
             if (alertCountSameDevice > 0) {

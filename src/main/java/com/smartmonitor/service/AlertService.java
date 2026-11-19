@@ -221,7 +221,7 @@ public class AlertService {
                 + "{\"threat_level\":\"real 或 suspicious 或 false_positive\","
                 + "\"confidence\":0到1之间的小数,"
                 + "\"reasoning\":\"一句话判断依据\","
-                + "\"evidence\":[\"引用取证结果中的事实，最多5条\"],"
+                + "\"evidence\":[\"引用取证结果中的事实，最多6条\"],"
                 + "\"causes\":[\"可能成因，1-2条\"],"
                 + "\"actions\":[\"可立即执行的处置建议，2-3条\"]}\n"
                 + "判定标准：流量突增且持续、当前值创窗口新高、设备为核心出口，倾向 real；"

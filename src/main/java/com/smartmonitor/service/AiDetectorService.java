@@ -32,11 +32,14 @@ public class AiDetectorService {
 
     private final TrafficDataRepository trafficDataRepository;
     private final AiConfigService aiConfigService;
+    private final AutoEncoderService autoEncoderService;
 
     public AiDetectorService(TrafficDataRepository trafficDataRepository,
-                             AiConfigService aiConfigService) {
+                             AiConfigService aiConfigService,
+                             AutoEncoderService autoEncoderService) {
         this.trafficDataRepository = trafficDataRepository;
         this.aiConfigService = aiConfigService;
+        this.autoEncoderService = autoEncoderService;
     }
 
     /**
@@ -48,7 +51,36 @@ public class AiDetectorService {
         if (trafficList == null || trafficList.isEmpty()) {
             return Collections.emptyMap();
         }
-        return statisticalDetect(trafficList);
+        Map<Long, double[]> result = statisticalDetect(trafficList);
+        applyAutoEncoderSignal(trafficList, result);
+        return result;
+    }
+
+    /**
+     * 自编码器第二信号。
+     *
+     * 不改变是否告警（主判定仍由稳健统计给出，避免模型误报放大），
+     * 只在两个信号一致时加强异常评分，使研判与告警排序更可信。
+     * 统计未判异常而 AE 判异常时，仅记录日志，用于观察模型的独立检出情况。
+     */
+    private void applyAutoEncoderSignal(List<TrafficData> trafficList, Map<Long, double[]> result) {
+        if (!autoEncoderService.isReady()) return;
+        for (TrafficData td : trafficList) {
+            double[] r = result.get(td.getDeviceId());
+            if (r == null) continue;
+            try {
+                double err = autoEncoderService.errorOf(td.getDeviceId());
+                if (err < 0 || !autoEncoderService.isAnomalous(err)) continue;
+                if (r[1] == 1) {
+                    r[0] = Math.max(-1.0, r[0] - 0.1);
+                } else {
+                    logger.debug("自编码器检出重构异常但统计未判: deviceId={}, err={}, threshold={}",
+                            td.getDeviceId(), String.format("%.6f", err), autoEncoderService.getThreshold());
+                }
+            } catch (Exception e) {
+                logger.debug("自编码器评分失败: deviceId={}, err={}", td.getDeviceId(), e.getMessage());
+            }
+        }
     }
 
     /**

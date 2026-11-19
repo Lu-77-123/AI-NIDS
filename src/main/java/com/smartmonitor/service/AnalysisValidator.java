@@ -76,8 +76,8 @@ public class AnalysisValidator {
         if (r.evidence.isEmpty()) {
             r.errors.add("evidence 为空，未引用任何取证事实");
         }
-        if (r.evidence.size() > 5) {
-            r.evidence = new ArrayList<>(r.evidence.subList(0, 5));
+        if (r.evidence.size() > 6) {
+            r.evidence = new ArrayList<>(r.evidence.subList(0, 6));
         }
         if (r.actions.isEmpty()) {
             r.errors.add("actions 为空，未给出可执行建议");

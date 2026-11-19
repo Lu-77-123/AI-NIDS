@@ -4,6 +4,7 @@ import com.smartmonitor.entity.AiConfig;
 import com.smartmonitor.service.AiConfigService;
 import com.smartmonitor.service.AiDetectorService;
 import com.smartmonitor.service.AlertService;
+import com.smartmonitor.service.AutoEncoderService;
 import com.smartmonitor.service.DeepSeekService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -26,15 +27,18 @@ public class AiController {
     private final AlertService alertService;
     private final DeepSeekService deepSeekService;
     private final AiConfigService aiConfigService;
+    private final AutoEncoderService autoEncoderService;
 
     public AiController(AiDetectorService aiDetectorService,
                         AlertService alertService,
                         DeepSeekService deepSeekService,
-                        AiConfigService aiConfigService) {
+                        AiConfigService aiConfigService,
+                        AutoEncoderService autoEncoderService) {
         this.aiDetectorService = aiDetectorService;
         this.alertService = alertService;
         this.deepSeekService = deepSeekService;
         this.aiConfigService = aiConfigService;
+        this.autoEncoderService = autoEncoderService;
     }
 
     /** 检测引擎状态与参数（当前生效值 + 出厂默认值） */
@@ -56,7 +60,29 @@ public class AiController {
         result.put("deepseekEnabled", deepSeekService.isEnabled());
         result.put("deepseekModel", deepSeekService.getModel());
         result.put("cooldownMinutes", alertService.getCooldownMinutes());
+        result.put("autoEncoder", autoEncoderService.status(null));
         return ResponseEntity.ok(result);
+    }
+
+    /**
+     * 自编码器运行状态。
+     * GET /api/ai/autoencoder/status?deviceId=16 —— 查看模型是否就绪、样本数、阈值与指定设备当前重构误差
+     */
+    @GetMapping("/autoencoder/status")
+    public ResponseEntity<Map<String, Object>> autoEncoderStatus(
+            @RequestParam(required = false) Long deviceId) {
+        return ResponseEntity.ok(autoEncoderService.status(deviceId));
+    }
+
+    /** 手动触发自编码器重训（仅管理员，JwtInterceptor 已限制） */
+    @PostMapping("/autoencoder/train")
+    public ResponseEntity<Map<String, Object>> autoEncoderTrain() {
+        autoEncoderService.trainModel();
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("ok", true);
+        resp.put("message", "重训已完成");
+        resp.putAll(autoEncoderService.status(null));
+        return ResponseEntity.ok(resp);
     }
 
     /** 修改运行期配置（仅管理员） */
